@@ -48,3 +48,4 @@ data/
 /data
 *.tsbuildinfo
 next-env.d.ts
+__pycache__/
