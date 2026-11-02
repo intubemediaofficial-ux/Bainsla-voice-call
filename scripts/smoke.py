@@ -33,6 +33,17 @@ def api(method, path, **kw):
 st, b = api("POST", "/api/auth/login", json={"email": os.environ["BV_EMAIL"], "password": os.environ["BV_PASSWORD"]})
 check(st == 200 and b.get("ok"), f"login {st}")
 
+if os.environ.get("BV_TEST_ORG"):
+    # run inside a separate mock-only organisation so real tenant data stays clean
+    tid = os.environ.get("BV_TEST_TENANT_ID")
+    if not tid:
+        st, b = api("POST", "/api/platform/tenants", json={"name": os.environ["BV_TEST_ORG"], "adminEmail": f"qa-{int(time.time())}@bainsla-voice.test", "adminName": "QA Mock", "ratePerMinutePaise": 30})
+        check(st == 200, f"test org created {st}")
+        tid = b["id"]
+        print("    test tenant", tid)
+    st, b = api("POST", "/api/platform/view", json={"tenantId": tid})
+    check(st == 200, "switched to test org")
+
 st, b = api("GET", "/api/health")
 check(st == 200 and b.get("db") == "ok" and b.get("redis") == "ok", f"health {b}")
 
