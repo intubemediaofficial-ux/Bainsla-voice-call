@@ -1,0 +1,501 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  OPERATOR
+  AUDITOR
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PurposeCategory {
+  TRANSACTIONAL
+  SERVICE
+  PROMOTIONAL
+  POLITICAL
+}
+
+enum SuppressionReason {
+  OPT_OUT_IVR
+  OPT_OUT_WEB
+  MANUAL
+  DND
+  COMPLAINT
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  REVOKED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CampaignStatus {
+  DRAFT
+  NEEDS_REVIEW
+  APPROVED
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum RecipientStatus {
+  PENDING
+  QUEUED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  FAILED
+  CANCELLED
+}
+
+enum CallStatus {
+  QUEUED
+  SUBMITTED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  NO_ANSWER
+  BUSY
+  FAILED
+  REJECTED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+}
+
+model PlatformSetting {
+  id                  Int      @id @default(1)
+  globalEmergencyStop Boolean  @default(false)
+  updatedAt           DateTime @updatedAt
+}
+
+model Tenant {
+  id                    String       @id @default(cuid())
+  name                  String
+  status                TenantStatus @default(ACTIVE)
+  emergencyStop         Boolean      @default(false)
+  timezone              String       @default("Asia/Kolkata")
+  callWindowStart       String       @default("09:00")
+  callWindowEnd         String       @default("21:00")
+  ratePerMinutePaise    Int          @default(60)
+  tenantDailyCap        Int          @default(20000)
+  contactDailyCap       Int          @default(1)
+  contactWeeklyCap      Int          @default(3)
+  defaultConcurrency    Int          @default(10)
+  secondApprovalAbove   Int          @default(5000)
+  maxRetries            Int          @default(2)
+  retryBackoffSec       Int          @default(300)
+  retryNoAnswer         Boolean      @default(false)
+  failureAutoPausePct   Int          @default(60)
+  retentionDays         Int          @default(0)
+  requireMfa            Boolean      @default(false)
+  providerKey           String       @default("mock")
+  dltEntityId           String?
+  politicalEnabled      Boolean      @default(false)
+  politicalProviderOk   Boolean      @default(false)
+  politicalAttestedBy   String?
+  politicalAttestedAt   DateTime?
+  createdAt             DateTime     @default(now())
+
+  users           User[]
+  contacts        Contact[]
+  purposes        Purpose[]
+  consents        ConsentRecord[]
+  suppressions    Suppression[]
+  callerIds       CallerId[]
+  audioAssets     AudioAsset[]
+  campaigns       Campaign[]
+  callAttempts    CallAttempt[]
+  ivrFlows        IvrFlow[]
+  auditLogs       AuditLog[]
+  invoices        Invoice[]
+  imports         ContactImport[]
+  silencePeriods  SilencePeriod[]
+  alerts          Alert[]
+}
+
+model User {
+  id              String     @id @default(cuid())
+  tenantId        String
+  tenant          Tenant     @relation(fields: [tenantId], references: [id])
+  email           String     @unique
+  name            String
+  passwordHash    String
+  role            Role       @default(OPERATOR)
+  isPlatformAdmin Boolean    @default(false)
+  mfaEnabled      Boolean    @default(false)
+  mfaSecretEnc    String?
+  mfaPendingEnc   String?
+  status          UserStatus @default(ACTIVE)
+  failedLogins    Int        @default(0)
+  lockedUntil     DateTime?
+  mustChangePw    Boolean    @default(false)
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  sessions        Session[]
+
+  @@index([tenantId])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mfaPassed   Boolean  @default(false)
+  tenantView  String?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  expiresAt   DateTime
+
+  @@index([userId])
+}
+
+model Purpose {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  name        String
+  category    PurposeCategory
+  description String?
+  active      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  consents    ConsentRecord[]
+  campaigns   Campaign[]
+
+  @@unique([tenantId, name])
+}
+
+model Contact {
+  id          String          @id @default(cuid())
+  tenantId    String
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  phoneEnc    String
+  phoneHash   String
+  phoneMasked String
+  nameEnc     String?
+  tags        String[]        @default([])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  consents    ConsentRecord[]
+  recipients  CampaignRecipient[]
+  attempts    CallAttempt[]
+
+  @@unique([tenantId, phoneHash])
+  @@index([tenantId, createdAt])
+}
+
+model ConsentRecord {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  contactId   String
+  contact     Contact   @relation(fields: [contactId], references: [id])
+  purposeId   String
+  purpose     Purpose   @relation(fields: [purposeId], references: [id])
+  channel     String    @default("VOICE")
+  grantedAt   DateTime
+  source      String
+  evidenceRef String
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  revokeNote  String?
+  importId    String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, contactId, purposeId])
+}
+
+model Suppression {
+  id        String            @id @default(cuid())
+  tenantId  String
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  phoneHash String
+  phoneMasked String          @default("")
+  reason    SuppressionReason
+  note      String?
+  createdById String?
+  createdAt DateTime          @default(now())
+
+  @@unique([tenantId, phoneHash])
+}
+
+model CallerId {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  phoneE164          String
+  label              String
+  providerKey        String
+  providerRef        String?
+  verificationStatus VerificationStatus @default(PENDING)
+  approvedCategories PurposeCategory[]  @default([])
+  notes              String?
+  requestedById      String?
+  verifiedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  campaigns          Campaign[]
+  attempts           CallAttempt[]
+
+  @@unique([tenantId, providerKey, phoneE164])
+}
+
+model AudioAsset {
+  id               String         @id @default(cuid())
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  name             String
+  groupKey         String
+  version          Int            @default(1)
+  storageKey       String
+  originalName     String
+  sha256           String
+  sizeBytes        Int
+  durationSeconds  Float
+  codec            String
+  approvalStatus   ApprovalStatus @default(PENDING)
+  approvedById     String?
+  approvedAt       DateTime?
+  rejectReason     String?
+  forPolitical     Boolean        @default(false)
+  mcmcCertificate  String?
+  transcript       String?
+  uploadedById     String?
+  createdAt        DateTime       @default(now())
+  campaigns        Campaign[]
+  attempts         CallAttempt[]
+
+  @@unique([tenantId, groupKey, version])
+}
+
+model IvrFlow {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  definition  Json
+  version     Int      @default(1)
+  history     Json     @default("[]")
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  campaigns   Campaign[]
+}
+
+model Campaign {
+  id                  String         @id @default(cuid())
+  tenantId            String
+  tenant              Tenant         @relation(fields: [tenantId], references: [id])
+  name                String
+  purposeId           String
+  purpose             Purpose        @relation(fields: [purposeId], references: [id])
+  audioAssetId        String
+  audioAsset          AudioAsset     @relation(fields: [audioAssetId], references: [id])
+  callerIdId          String
+  callerId            CallerId       @relation(fields: [callerIdId], references: [id])
+  ivrFlowId           String?
+  ivrFlow             IvrFlow?       @relation(fields: [ivrFlowId], references: [id])
+  status              CampaignStatus @default(DRAFT)
+  segmentTags         String[]       @default([])
+  scheduledAt         DateTime?
+  windowStart         String         @default("09:00")
+  windowEnd           String         @default("21:00")
+  dailyCap            Int            @default(5000)
+  concurrency         Int            @default(10)
+  consentBasis        String
+  optOutMethod        String         @default("Press 9 during the call, or visit /optout")
+  audienceCount       Int            @default(0)
+  estimatedCostPaise  Int            @default(0)
+  needsSecondApproval Boolean        @default(false)
+  attested            Boolean        @default(false)
+  createdById         String
+  submittedAt         DateTime?
+  approvedById        String?
+  approvedAt          DateTime?
+  secondApprovedById  String?
+  secondApprovedAt    DateTime?
+  reviewNote          String?
+  startedAt           DateTime?
+  pausedAt            DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  failureReason       String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  recipients          CampaignRecipient[]
+  attempts            CallAttempt[]
+
+  @@index([tenantId, status])
+  @@index([status, scheduledAt])
+}
+
+model CampaignRecipient {
+  id                   String          @id @default(cuid())
+  campaignId           String
+  campaign             Campaign        @relation(fields: [campaignId], references: [id])
+  contactId            String
+  contact              Contact         @relation(fields: [contactId], references: [id])
+  status               RecipientStatus @default(PENDING)
+  skipReason           String?
+  attempts             Int             @default(0)
+  nextAttemptAt        DateTime        @default(now())
+  eligibilityCheckedAt DateTime?
+  updatedAt            DateTime        @updatedAt
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status, nextAttemptAt])
+}
+
+model CallAttempt {
+  id              String     @id @default(cuid())
+  tenantId        String
+  tenant          Tenant     @relation(fields: [tenantId], references: [id])
+  campaignId      String?
+  campaign        Campaign?  @relation(fields: [campaignId], references: [id])
+  recipientId     String?
+  contactId       String
+  contact         Contact    @relation(fields: [contactId], references: [id])
+  callerIdId      String
+  callerId        CallerId   @relation(fields: [callerIdId], references: [id])
+  audioAssetId    String
+  audioAsset      AudioAsset @relation(fields: [audioAssetId], references: [id])
+  purposeId       String
+  idempotencyKey  String     @unique
+  providerKey     String
+  providerCallId  String?    @unique
+  status          CallStatus @default(QUEUED)
+  failureReason   String?
+  transient       Boolean    @default(false)
+  dtmf            String?
+  optedOut        Boolean    @default(false)
+  attemptNo       Int        @default(1)
+  submittedAt     DateTime?
+  answeredAt      DateTime?
+  endedAt         DateTime?
+  durationSeconds Int        @default(0)
+  costPaise       Int        @default(0)
+  createdById     String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  events          CallEvent[]
+
+  @@index([tenantId, createdAt])
+  @@index([campaignId, status])
+  @@index([contactId, createdAt])
+}
+
+model CallEvent {
+  id              String      @id @default(cuid())
+  callAttemptId   String
+  callAttempt     CallAttempt @relation(fields: [callAttemptId], references: [id])
+  providerEventId String      @unique
+  type            String
+  payloadRedacted Json
+  receivedAt      DateTime    @default(now())
+
+  @@index([callAttemptId])
+}
+
+model ContactImport {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  fileName    String
+  purposeId   String
+  tags        String[] @default([])
+  total       Int      @default(0)
+  created     Int      @default(0)
+  updated     Int      @default(0)
+  duplicates  Int      @default(0)
+  rejected    Int      @default(0)
+  errors      Json     @default("[]")
+  createdById String
+  createdAt   DateTime @default(now())
+}
+
+model SilencePeriod {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  label     String
+  startsAt  DateTime
+  endsAt    DateTime
+  createdAt DateTime @default(now())
+}
+
+model Alert {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  level      String    @default("warning")
+  message    String
+  campaignId String?
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId, resolvedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String?
+  tenant     Tenant?  @relation(fields: [tenantId], references: [id])
+  actorId    String?
+  actorEmail String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json     @default("{}")
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  tenantId    String
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  periodStart DateTime
+  periodEnd   DateTime
+  callCount   Int
+  minutes     Int
+  totalPaise  Int
+  status      InvoiceStatus @default(ISSUED)
+  createdAt   DateTime      @default(now())
+
+  @@unique([tenantId, periodStart])
+}
