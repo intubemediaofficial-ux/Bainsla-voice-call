@@ -8,10 +8,10 @@ import { ProviderError } from "./provider/types";
 import { finalizeAttempt } from "./callstate";
 import { checkContact, checkSetup, platformStopped } from "./eligibility";
 
-export function signedAudioUrl(audioId: string, ttlSec = 6 * 3600) {
+export function signedAudioUrl(audioId: string, ttlSec = 6 * 3600, fmt?: "wav") {
   const exp = Math.floor(Date.now() / 1000) + ttlSec;
   const sig = signValue(`audio:${audioId}:${exp}`);
-  return `${env.appUrl}/api/audio/${audioId}/stream?exp=${exp}&sig=${sig}`;
+  return `${env.appUrl}/api/audio/${audioId}/stream?exp=${exp}&sig=${sig}${fmt ? `&fmt=${fmt}` : ""}`;
 }
 
 export function statusCallbackUrl(providerKey: string) {

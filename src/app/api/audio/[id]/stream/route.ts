@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCtx } from "@/lib/auth";
 import { can } from "@/lib/rbac";
 import { safeEqual, signValue } from "@/lib/crypto";
-import { audioPath } from "@/lib/audio";
+import { audioPath, telephonyWavPath } from "@/lib/audio";
 
 /** Audio is private: served to signed-in users of the same tenant, or to the provider via a short-lived signed URL. */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -22,8 +22,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     allowed = Boolean(ctx && ctx.tenant.id === asset.tenantId && can(ctx.user.role, "audio.read"));
   }
   if (!allowed) return new Response("Forbidden", { status: 403 });
-  const buf = await readFile(audioPath(asset.storageKey));
+  const wav = u.searchParams.get("fmt") === "wav";
+  const buf = await readFile(wav ? await telephonyWavPath(asset.storageKey) : audioPath(asset.storageKey));
   return new Response(new Uint8Array(buf), {
-    headers: { "Content-Type": "audio/mpeg", "Content-Length": String(buf.length), "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
+    headers: { "Content-Type": wav ? "audio/wav" : "audio/mpeg", "Content-Length": String(buf.length), "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" },
   });
 }

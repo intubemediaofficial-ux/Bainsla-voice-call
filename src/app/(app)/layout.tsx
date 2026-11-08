@@ -7,7 +7,13 @@ import { Shell, type NavItem } from "@/components/shell";
 export const dynamic = "force-dynamic";
 
 const NAV: { section: string; items: (NavItem & { perm: Perm })[] }[] = [
-  { section: "Overview", items: [{ href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", perm: "contacts.read" }] },
+  {
+    section: "Overview",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: "LayoutDashboard", perm: "contacts.read" },
+      { href: "/setup", label: "Go-live setup", icon: "ListChecks", perm: "settings.manage" },
+    ],
+  },
   {
     section: "Audience",
     items: [

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  AudioLines, BarChart3, Building2, ClipboardList, FileClock, GitBranch, LayoutDashboard, LogOut, Megaphone, Menu, PhoneCall, PhoneOutgoing,
+  AudioLines, BarChart3, Building2, ClipboardList, FileClock, GitBranch, LayoutDashboard, ListChecks, LogOut, Megaphone, Menu, PhoneCall, PhoneOutgoing,
   Receipt, Settings, ShieldBan, ShieldCheck, UserCircle2, Users, UsersRound, X, OctagonX,
 } from "lucide-react";
 import { send } from "./client";
@@ -11,7 +11,7 @@ import { send } from "./client";
 export type NavItem = { href: string; label: string; icon: string };
 
 const ICONS = {
-  LayoutDashboard, Users, ShieldCheck, ShieldBan, PhoneCall, AudioLines, Megaphone, PhoneOutgoing, GitBranch, ClipboardList, BarChart3, Receipt, UsersRound, Settings, FileClock, Building2,
+  LayoutDashboard, ListChecks, Users, ShieldCheck, ShieldBan, PhoneCall, AudioLines, Megaphone, PhoneOutgoing, GitBranch, ClipboardList, BarChart3, Receipt, UsersRound, Settings, FileClock, Building2,
 };
 
 export function Shell({
