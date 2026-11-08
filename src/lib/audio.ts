@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { env } from "./env";
@@ -9,6 +9,20 @@ const run = promisify(execFile);
 
 export const MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 export const MAX_AUDIO_SECONDS = 300;
+
+/** 8 kHz 16-bit mono WAV copy for telephony providers (Exotel plays this format best); created once, then cached. */
+export async function telephonyWavPath(storageKey: string) {
+  const src = audioPath(storageKey);
+  const out = src.replace(/\.mp3$/, ".8k.wav");
+  try {
+    await stat(out);
+  } catch {
+    const tmp = `${out}.${process.pid}.tmp.wav`;
+    await run("ffmpeg", ["-y", "-v", "error", "-i", src, "-ac", "1", "-ar", "8000", "-c:a", "pcm_s16le", tmp], { timeout: 120000 });
+    await rename(tmp, out);
+  }
+  return out;
+}
 
 export function audioPath(storageKey: string) {
   if (!/^[\w-]+\/[\w-]+\.mp3$/.test(storageKey)) throw new Error("Bad storage key");

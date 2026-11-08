@@ -15,6 +15,12 @@ const cfg = () => ({
   webhookToken: process.env.EXOTEL_WEBHOOK_TOKEN || "",
 });
 
+export function exotelTokenOk(url: URL) {
+  const t = url.searchParams.get("t") || "";
+  const want = cfg().webhookToken;
+  return Boolean(want) && safeEqual(t, want);
+}
+
 function auth() {
   const c = cfg();
   return "Basic " + Buffer.from(`${c.apiKey}:${c.apiToken}`).toString("base64");
@@ -67,12 +73,13 @@ export const exotelProvider: TelephonyProvider = {
     return { providerCallId: j.Call.Sid, status: STATUS[j.Call.Status] ?? "SUBMITTED" };
   },
   verifyWebhook(_h, _b, url) {
-    const t = url.searchParams.get("t") || "";
-    const want = cfg().webhookToken;
-    return Boolean(want) && safeEqual(t, want);
+    return exotelTokenOk(url);
   },
   parseWebhook(rawBody): ParsedWebhook {
-    const b = JSON.parse(rawBody.toString("utf8")) as Record<string, string>;
+    const text = rawBody.toString("utf8");
+    const b: Record<string, string> = text.trimStart().startsWith("{")
+      ? (JSON.parse(text) as Record<string, string>)
+      : Object.fromEntries(new URLSearchParams(text));
     const sid = b.CallSid;
     const st = STATUS[(b.Status || "").toLowerCase()] ?? "FAILED";
     if (!sid) throw new Error("Malformed Exotel webhook");

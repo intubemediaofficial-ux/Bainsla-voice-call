@@ -38,6 +38,22 @@ export async function optOutPhoneHash(tenantId: string, phoneHash: string, phone
   }
 }
 
+/** Record keys pressed during a call; key 9 opts the number out of all future calls. */
+export async function recordDtmf(attempt: CallAttempt, raw: string): Promise<CallAttempt> {
+  const digits = raw.replace(/[^0-9*#]/g, "").slice(0, 20);
+  if (!digits) return attempt;
+  const optOut = digits.includes("9");
+  const updated = await prisma.callAttempt.update({ where: { id: attempt.id }, data: { dtmf: digits, ...(optOut ? { optedOut: true } : {}) } });
+  if (optOut && !attempt.optedOut) {
+    const c = await prisma.contact.findUnique({ where: { id: attempt.contactId } });
+    if (c) {
+      await optOutPhoneHash(attempt.tenantId, c.phoneHash, c.phoneMasked, "OPT_OUT_IVR", "Pressed 9 during call");
+      await audit({ tenantId: attempt.tenantId }, "contact.opt_out", "Contact", c.id, { via: "ivr", attemptId: attempt.id });
+    }
+  }
+  return updated;
+}
+
 /** Apply a verified provider event. Idempotent (dedupe by provider event id) and order-safe (status never regresses). */
 export async function applyProviderEvent(providerKey: string, ev: ParsedWebhook): Promise<"applied" | "duplicate" | "unknown_call" | "stale"> {
   const attempt = await prisma.callAttempt.findUnique({ where: { providerCallId: ev.providerCallId } });
@@ -55,11 +71,11 @@ export async function applyProviderEvent(providerKey: string, ev: ParsedWebhook)
     if ((e as { code?: string }).code === "P2002") return "duplicate";
     throw e;
   }
+  if (ev.dtmf) Object.assign(attempt, await recordDtmf(attempt, ev.dtmf));
   if (RANK[ev.status] <= RANK[attempt.status] || isTerminal(attempt.status)) return "stale";
   const now = new Date();
   const data: Prisma.CallAttemptUpdateInput = { status: ev.status };
   if (ev.status === "IN_PROGRESS") data.answeredAt = now;
-  if (ev.dtmf) data.dtmf = ev.dtmf;
   if (isTerminal(ev.status)) {
     data.endedAt = now;
     data.durationSeconds = Math.max(0, Math.round(ev.durationSeconds ?? 0));
@@ -68,14 +84,6 @@ export async function applyProviderEvent(providerKey: string, ev: ParsedWebhook)
     if (ev.status === "COMPLETED" && !attempt.answeredAt) data.answeredAt = now;
   }
   const updated = await prisma.callAttempt.update({ where: { id: attempt.id }, data });
-  if (ev.dtmf && ev.dtmf.includes("9")) {
-    const c = await prisma.contact.findUnique({ where: { id: attempt.contactId } });
-    if (c) {
-      await prisma.callAttempt.update({ where: { id: attempt.id }, data: { optedOut: true } });
-      await optOutPhoneHash(attempt.tenantId, c.phoneHash, c.phoneMasked, "OPT_OUT_IVR", "Pressed 9 during call");
-      await audit({ tenantId: attempt.tenantId }, "contact.opt_out", "Contact", c.id, { via: "ivr", attemptId: attempt.id });
-    }
-  }
   if (isTerminal(ev.status)) await finalizeAttempt(updated);
   return "applied";
 }
